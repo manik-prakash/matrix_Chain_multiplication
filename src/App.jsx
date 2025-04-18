@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
+import MatrixInput from './components/MatrixInput/MatrixInput';
+import MatrixDisplay from './components/MatrixDisplay/MatrixDisplay';
+import { parseDimensions, generateMatrices, matrixChainOrder, getOptimalParenthesization } from './utils/matrixChainUtils';
 
-const MatrixChainCalculator = () => {
+const App = () => {
   const [dimensions, setDimensions] = useState('');
   const [matrices, setMatrices] = useState([]);
   const [costTable, setCostTable] = useState([]);
@@ -12,7 +15,6 @@ const MatrixChainCalculator = () => {
   const [loading, setLoading] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
-  // Example matrices for quick testing
   const examples = {
     simple: '10, 20, 30, 40',
     medium: '5, 10, 3, 12, 5, 50, 6',
@@ -24,72 +26,9 @@ const MatrixChainCalculator = () => {
     setError('');
   };
 
-  const setExample = (example) => {
+  const handleExampleSelect = (example) => {
     setDimensions(examples[example]);
     setShowExample(false);
-  };
-
-  const parseDimensions = () => {
-    try {
-      const dims = dimensions.split(',').map(d => {
-        const num = parseInt(d.trim());
-        if (isNaN(num)) throw new Error('Invalid dimension');
-        if (num <= 0) throw new Error('Dimensions must be positive');
-        return num;
-      });
-      
-      if (dims.length < 2) {
-        throw new Error('Please enter at least 2 dimensions (for 1 matrix)');
-      }
-      
-      return dims;
-    } catch (err) {
-      setError(err.message || 'Please enter valid positive numbers separated by commas');
-      return null;
-    }
-  };
-
-  const generateMatrices = (dims) => {
-    const matrices = [];
-    for (let i = 0; i < dims.length - 1; i++) {
-      matrices.push({
-        name: `M${i + 1}`,
-        rows: dims[i],
-        cols: dims[i + 1],
-        size: `${dims[i]}×${dims[i + 1]}`,
-      });
-    }
-    return matrices;
-  };
-
-  const matrixChainOrder = (dims) => {
-    const n = dims.length - 1;
-    const m = Array.from({ length: n }, () => Array(n).fill(0));
-    const s = Array.from({ length: n }, () => Array(n).fill(0));
-
-    for (let len = 2; len <= n; len++) {
-      for (let i = 0; i < n - len + 1; i++) {
-        const j = i + len - 1;
-        m[i][j] = Infinity;
-        for (let k = i; k < j; k++) {
-          const cost = m[i][k] + m[k + 1][j] + dims[i] * dims[k + 1] * dims[j + 1];
-          if (cost < m[i][j]) {
-            m[i][j] = cost;
-            s[i][j] = k;
-          }
-        }
-      }
-    }
-
-    return { m, s };
-  };
-
-  const getOptimalParenthesization = (s, i, j) => {
-    if (i === j) {
-      return `M${i + 1}`;
-    } else {
-      return `(${getOptimalParenthesization(s, i, s[i][j])} × ${getOptimalParenthesization(s, s[i][j] + 1, j)})`;
-    }
   };
 
   const handleSubmit = (e) => {
@@ -99,26 +38,28 @@ const MatrixChainCalculator = () => {
     
     setTimeout(() => {
       try {
-        const dims = parseDimensions();
-        if (!dims) {
-          setLoading(false);
-          return;
-        }
+        const dims = parseDimensions(dimensions);
+        const generatedMatrices = generateMatrices(dims).map((matrix, index) => ({
+          ...matrix,
+          name: `M${index + 1}`,
+          size: `${matrix.rows}×${matrix.cols}`
+        }));
+        setMatrices(generatedMatrices);
 
-        const matrices = generateMatrices(dims);
-        setMatrices(matrices);
+        const { m: cost, s: split } = matrixChainOrder(dims);
+        setCostTable(cost);
+        setSplitTable(split);
 
-        const { m: costTable, s: splitTable } = matrixChainOrder(dims);
-        setCostTable(costTable);
-        setSplitTable(splitTable);
-        setMinCost(costTable[0][dims.length - 2]);
-        setOptimalParenthesization(getOptimalParenthesization(splitTable, 0, dims.length - 2));
+        const n = dims.length - 1;
+        const parenthesization = getOptimalParenthesization(split, 0, n - 1);
+        setOptimalParenthesization(parenthesization);
+        setMinCost(cost[0][n - 1]);
       } catch (err) {
-        setError('Error during calculation. Please check your input.');
+        setError(err.message);
       } finally {
         setLoading(false);
       }
-    }, 500); // Brief timeout to show loading state
+    }, 500);
   };
 
   const resetCalculator = () => {
@@ -139,75 +80,26 @@ const MatrixChainCalculator = () => {
     <div className="min-h-screen bg-gradient-to-br from-gray-900 to-blue-900 py-8 px-4">
       <div className="max-w-4xl mx-auto bg-gray-800 rounded-xl shadow-2xl overflow-hidden">
         <div className="bg-gradient-to-r from-purple-800 to-blue-700 px-6 py-4">
-          <h1 className="text-2xl font-bold text-white">Matrix Chain Multiplication Optimizer</h1>
-          <p className="text-blue-200 text-sm mt-1">Calculate the optimal order for multiplying matrices to minimize operations</p>
+          <h1 className="text-2xl font-bold text-white">ChainReactions</h1>
+          <p className="text-blue-200 text-sm mt-1">Visualizing Matrix Chain Multiplication with Dynamic Programming</p>
         </div>
         
         <div className="p-6">
           <form onSubmit={handleSubmit} className="mb-8">
-            <div className="mb-4">
-              <label htmlFor="dimensions" className="block text-sm font-medium text-gray-300 mb-2">
-                Enter matrix dimensions (comma separated):
-              </label>
-              
-              <div className="relative">
-                <input
-                  type="text"
-                  id="dimensions"
-                  value={dimensions}
-                  onChange={handleInputChange}
-                  placeholder="e.g., 10, 20, 30, 40"
-                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-200 placeholder-gray-400 transition-colors"
-                  required
-                />
-                <button 
-                  type="button"
-                  onClick={() => setShowExample(!showExample)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-sm text-blue-400 hover:text-blue-300"
-                >
-                  Examples
-                </button>
+            <MatrixInput
+              dimensions={dimensions}
+              onInputChange={handleInputChange}
+              onExampleSelect={handleExampleSelect}
+              showExample={showExample}
+              setShowExample={setShowExample}
+              examples={examples}
+            />
+            
+            {error && (
+              <div className="mt-2 p-2 bg-red-900/50 border-l-4 border-red-500 text-red-200 text-sm">
+                {error}
               </div>
-              
-              {showExample && (
-                <div className="mt-2 p-3 bg-gray-700 rounded-md border border-gray-600">
-                  <p className="text-sm text-gray-300 mb-2">Select an example:</p>
-                  <div className="flex flex-wrap gap-2">
-                    <button 
-                      type="button" 
-                      onClick={() => setExample('simple')} 
-                      className="px-3 py-1 text-xs bg-blue-900 text-blue-200 rounded hover:bg-blue-800 transition-colors"
-                    >
-                      Simple (4 dimensions)
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setExample('medium')} 
-                      className="px-3 py-1 text-xs bg-blue-900 text-blue-200 rounded hover:bg-blue-800 transition-colors"
-                    >
-                      Medium (7 dimensions)
-                    </button>
-                    <button 
-                      type="button" 
-                      onClick={() => setExample('complex')} 
-                      className="px-3 py-1 text-xs bg-blue-900 text-blue-200 rounded hover:bg-blue-800 transition-colors"
-                    >
-                      Complex (7 dimensions)
-                    </button>
-                  </div>
-                </div>
-              )}
-              
-              <p className="mt-2 text-sm text-gray-400">
-                For matrices M<sub>1</sub>(10×20), M<sub>2</sub>(20×30), M<sub>3</sub>(30×40) enter "10, 20, 30, 40"
-              </p>
-              
-              {error && (
-                <div className="mt-2 p-2 bg-red-900/50 border-l-4 border-red-500 text-red-200 text-sm">
-                  {error}
-                </div>
-              )}
-            </div>
+            )}
             
             <div className="flex flex-wrap gap-3">
               <button
@@ -238,135 +130,13 @@ const MatrixChainCalculator = () => {
             </div>
           </form>
 
-          {matrices.length > 0 && (
-            <div className="space-y-8">
-              <div className="bg-gray-750 rounded-lg border border-gray-600 overflow-hidden">
-                <div className="bg-gray-700 px-4 py-3 border-b border-gray-600">
-                  <h2 className="text-lg font-semibold text-gray-100">Input Matrices</h2>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full">
-                    <thead className="bg-gray-700">
-                      <tr>
-                        <th className="px-4 py-3 border-b border-gray-600 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Matrix</th>
-                        <th className="px-4 py-3 border-b border-gray-600 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Dimensions</th>
-                        <th className="px-4 py-3 border-b border-gray-600 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Size</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-600 bg-gray-750">
-                      {matrices.map((matrix, index) => (
-                        <tr key={index} className="hover:bg-gray-700 transition-colors">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-200">{matrix.name}</td>
-                          <td className="px-4 py-3 text-sm text-gray-300">
-                            p<sub>{index}</sub> × p<sub>{index + 1}</sub>
-                          </td>
-                          <td className="px-4 py-3 text-sm text-gray-300">{matrix.size}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {minCost !== null && (
-                <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 rounded-lg border border-blue-700 p-6">
-                  <h2 className="text-lg font-semibold text-blue-200 mb-3">Optimization Results</h2>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="font-medium text-gray-300">Minimum Multiplication Cost:</p>
-                      <p className="text-2xl font-bold text-blue-300">{minCost.toLocaleString()}</p>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-300">Optimal Parenthesization:</p>
-                      <p className="text-lg font-mono bg-gray-800 p-3 rounded border border-gray-600 overflow-x-auto text-blue-200">
-                        {optimalParenthesization}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              <div className="bg-gray-750 rounded-lg border border-gray-600 overflow-hidden">
-                <div className="bg-gray-700 px-4 py-3 border-b border-gray-600">
-                  <h2 className="text-lg font-semibold text-gray-100">Cost Table (m)</h2>
-                  <p className="text-xs text-gray-400 mt-1">The minimum number of scalar multiplications needed to compute each subchain</p>
-                </div>
-                <div className="overflow-x-auto p-3">
-                  <table className="min-w-full bg-gray-750 border border-gray-600">
-                    <thead>
-                      <tr>
-                        <th className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300"></th>
-                        {matrices.map((_, j) => (
-                          <th key={j} className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300">
-                            {j + 1}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {costTable.map((row, i) => (
-                        <tr key={i}>
-                          <td className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300">{i + 1}</td>
-                          {row.map((cell, j) => (
-                            <td
-                              key={j}
-                              className={`px-3 py-2 border border-gray-600 text-sm ${
-                                i === 0 && j === costTable.length - 1 
-                                  ? 'bg-blue-900 font-semibold text-blue-200' 
-                                  : cell === 0 ? 'bg-gray-700 text-gray-500' : 'text-gray-300'
-                              }`}
-                            >
-                              {cell === 0 ? '-' : cell.toLocaleString()}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div className="bg-gray-750 rounded-lg border border-gray-600 overflow-hidden">
-                <div className="bg-gray-700 px-4 py-3 border-b border-gray-600">
-                  <h2 className="text-lg font-semibold text-gray-100">Split Table (s)</h2>
-                  <p className="text-xs text-gray-400 mt-1">The position at which to split each subchain for optimal multiplication</p>
-                </div>
-                <div className="overflow-x-auto p-3">
-                  <table className="min-w-full bg-gray-750 border border-gray-600">
-                    <thead>
-                      <tr>
-                        <th className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300"></th>
-                        {matrices.map((_, j) => (
-                          <th key={j} className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300">
-                            {j + 1} {/* Updated: Column headers start from 2 */}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {splitTable.map((row, i) => (
-                        <tr key={i}>
-                          <td className="px-3 py-2 border border-gray-600 bg-gray-700 text-xs font-medium text-gray-300">{i + 1}</td>
-                          {row.map((cell, j) => (
-                            <td
-                              key={j}
-                              className={`px-3 py-2 border border-gray-600 text-sm ${
-                                i === 0 && j === splitTable.length - 1 
-                                  ? 'bg-blue-900 font-semibold text-blue-200' 
-                                  : cell === 0 ? 'bg-gray-700 text-gray-500' : 'text-gray-300'
-                              }`}
-                            >
-                              {cell === 0 ? '-' : cell + 1}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-          )}
+          <MatrixDisplay
+            matrices={matrices}
+            costTable={costTable}
+            splitTable={splitTable}
+            optimalParenthesization={optimalParenthesization}
+            minCost={minCost}
+          />
           
           {/* Algorithm Information Section */}
           <div className="mt-8 bg-gray-750 rounded-lg border border-gray-600 overflow-hidden">
@@ -402,6 +172,52 @@ const MatrixChainCalculator = () => {
                   <p className="text-sm mt-2 leading-relaxed">
                     The computational cost of multiplying two matrices depends on their dimensions. For a p×q matrix A and a q×r matrix B, multiplying them requires p×q×r scalar multiplications. The goal is to find the parenthesization that minimizes the total number of scalar multiplications needed.
                   </p>
+                </div>
+
+                <div>
+                  <h3 className="text-md font-semibold text-blue-300 mb-2">Pseudocode</h3>
+                  <div className="bg-black/50 p-4 rounded-lg border border-gray-800 font-mono text-sm">
+                    <pre className="text-gray-300">
+{`function MATRIX-CHAIN-ORDER(p):
+    n = length(p) - 1
+    let m[1..n, 1..n] and s[1..n-1, 2..n] be new tables
+    
+    for i = 1 to n:
+        m[i, i] = 0
+    
+    for l = 2 to n:           // l is the chain length
+        for i = 1 to n-l+1:   // i is the starting index
+            j = i + l - 1     // j is the ending index
+            m[i, j] = ∞
+            
+            for k = i to j-1: // k is the split point
+                q = m[i, k] + m[k+1, j] + p[i-1]*p[k]*p[j]
+                if q < m[i, j]:
+                    m[i, j] = q
+                    s[i, j] = k
+    
+    return m and s
+
+function PRINT-OPTIMAL-PARENS(s, i, j):
+    if i == j:
+        print "A" + i
+    else:
+        print "("
+        PRINT-OPTIMAL-PARENS(s, i, s[i, j])
+        PRINT-OPTIMAL-PARENS(s, s[i, j]+1, j)
+        print ")"`}
+                    </pre>
+                  </div>
+                  <div className="mt-4 text-sm text-gray-400">
+                    <p className="mb-2">Where:</p>
+                    <ul className="list-disc pl-5 space-y-1">
+                      <li><code className="text-blue-400">p</code>: Array of matrix dimensions</li>
+                      <li><code className="text-blue-400">m[i, j]</code>: Minimum number of scalar multiplications needed to compute A<sub>i</sub>...A<sub>j</sub></li>
+                      <li><code className="text-blue-400">s[i, j]</code>: Index of the optimal split point</li>
+                      <li><code className="text-blue-400">l</code>: Length of the chain being considered</li>
+                      <li><code className="text-blue-400">k</code>: Split point being evaluated</li>
+                    </ul>
+                  </div>
                 </div>
                 
                 <div>
@@ -478,7 +294,7 @@ const MatrixChainCalculator = () => {
         
         <div className="bg-gray-850 px-6 py-4 border-t border-gray-700">
           <p className="text-xs text-gray-500 text-center">
-            Matrix Chain Multiplication Optimizer • Dynamic Programming Solution
+            ChainReactions • Matrix Chain Multiplication Optimizer
           </p>
         </div>
       </div>
@@ -486,4 +302,4 @@ const MatrixChainCalculator = () => {
   );
 };
 
-export default MatrixChainCalculator;
+export default App;
